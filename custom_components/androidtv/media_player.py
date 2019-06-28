@@ -20,8 +20,6 @@ ANDROIDTV_DOMAIN = 'androidtv'
 
 _LOGGER = logging.getLogger(__name__)
 
-logging.getLogger('adb_messenger').setLevel(logging.CRITICAL)
-
 SUPPORT_ANDROIDTV = SUPPORT_PAUSE | SUPPORT_PLAY | \
     SUPPORT_TURN_ON | SUPPORT_TURN_OFF | SUPPORT_PREVIOUS_TRACK | \
     SUPPORT_NEXT_TRACK | SUPPORT_STOP | SUPPORT_VOLUME_MUTE | \
