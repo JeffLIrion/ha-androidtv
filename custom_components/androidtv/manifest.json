@@ -3,7 +3,7 @@
   "name": "Android TV",
   "documentation": "https://www.home-assistant.io/components/androidtv",
   "requirements": [
-    "https://github.com/JeffLIrion/python-androidtv/zipball/current-app-improvement#androidtv==0.0.17", "rsa", "adb-homeassistant>=1.3.2", "pure-python-adb-homeassistant>=0.1.7.dev0"
+    "androidtv==0.0.18"
   ],
   "dependencies": [],
   "codeowners": ["@JeffLIrion"]
