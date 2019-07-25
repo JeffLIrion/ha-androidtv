@@ -94,13 +94,17 @@ class BaseTV(object):
 
         """
         if not self.available:
+            logging.critical("ADB command not sent to %s because python-adb connection is not established: %s", self.host, cmd)
             return None
 
         if self._adb_lock.acquire(**LOCK_KWARGS):  # pylint: disable=unexpected-keyword-arg
+            logging.critical("Sending command to %s via python-adb: %s", self.host, cmd)
             try:
                 return self._adb.Shell(cmd)
             finally:
                 self._adb_lock.release()
+        else:
+            logging.critical("ADB command not sent to %s because python-adb lock not acquired: %s", self.host, cmd)
 
         return None
 
@@ -119,13 +123,17 @@ class BaseTV(object):
 
         """
         if not self._available:
+            logging.critical("ADB command not sent to %s via ADB server %s:%s because pure-python-adb connection is not established: %s", self.host, self.adb_server_ip, self.adb_server_port, cmd)
             return None
 
         if self._adb_lock.acquire(**LOCK_KWARGS):  # pylint: disable=unexpected-keyword-arg
+            logging.critical("Sending command to %s via ADB server %s:%s: %s", self.host, self.adb_server_ip, self.adb_server_port, cmd)
             try:
                 return self._adb_device.shell(cmd)
             finally:
                 self._adb_lock.release()
+        else:
+            logging.critical("ADB command not sent to %s via ADB server %s:%s because pure-python-adb lock not acquired: %s", self.host, self.adb_server_ip, self.adb_server_port, cmd)
 
         return None
 
@@ -180,12 +188,13 @@ class BaseTV(object):
 
                     # ADB connection successfully established
                     self._available = True
+                    logging.critical("ADB connection to %s successfully established", self.host)
 
                 except socket_error as serr:
                     if self._available or always_log_errors:
                         if serr.strerror is None:
                             serr.strerror = "Timed out trying to connect to ADB device."
-                        logging.warning("Couldn't connect to host: %s, error: %s", self.host, serr.strerror)
+                        logging.warning("Couldn't connect to host %s, error: %s", self.host, serr.strerror)
 
                     # ADB connection attempt failed
                     self._adb = None
@@ -201,7 +210,16 @@ class BaseTV(object):
                     self._adb_device = self._adb_client.device(self.host)
                     self._available = bool(self._adb_device)
 
+                    if self._available:
+                        logging.critical("ADB connection to %s via ADB server %s:%s successfully established", self.host, self.adb_server_ip, self.adb_server_port)
+                    else:
+                        logging.critical("Couldn't connect to host %s via ADB server %s:%s", self.host, self.adb_server_ip, self.adb_server_port)
+
                 except:  # noqa pylint: disable=bare-except
+                    if self._available or always_log_errors:
+                        logging.warning("Couldn't connect to host %s via ADB server %s:%s, error: %s", self.host, self.adb_server_ip, self.adb_server_port, "TODO")
+
+                    # ADB connection attempt failed
                     self._available = False
 
                 finally:
