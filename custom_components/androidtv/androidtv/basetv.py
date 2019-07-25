@@ -215,9 +215,9 @@ class BaseTV(object):
                     else:
                         logging.critical("Couldn't connect to host %s via ADB server %s:%s", self.host, self.adb_server_ip, self.adb_server_port)
 
-                except:  # noqa pylint: disable=bare-except
+                except Exception as exc:  # noqa pylint: disable=broad-except
                     if self._available or always_log_errors:
-                        logging.warning("Couldn't connect to host %s via ADB server %s:%s, error: %s", self.host, self.adb_server_ip, self.adb_server_port, "TODO")
+                        logging.warning("Couldn't connect to host %s via ADB server %s:%s, error: %s", self.host, self.adb_server_ip, self.adb_server_port, exc)
 
                     # ADB connection attempt failed
                     self._available = False
