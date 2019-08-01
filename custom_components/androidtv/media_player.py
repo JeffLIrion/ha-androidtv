@@ -114,7 +114,7 @@ ANDROIDTV_STATES = {
 
 def setup_platform(hass, config, add_entities, discovery_info=None):
     """Set up the Android TV / Fire TV platform."""
-    from androidtv import setup
+    from .androidtv import setup
 
     hass.data.setdefault(ANDROIDTV_DOMAIN, {})
 
@@ -251,7 +251,7 @@ class ADBDevice(MediaPlayerDevice):
 
     def __init__(self, aftv, name, apps, turn_on_command, turn_off_command):
         """Initialize the Android TV / Fire TV device."""
-        from androidtv.constants import APPS, KEYS
+        from .androidtv.constants import APPS, KEYS
 
         self.aftv = aftv
         self._name = name
