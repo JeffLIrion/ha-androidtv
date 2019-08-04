@@ -90,7 +90,7 @@ class FireTV(BaseTV):
         Parameters
         ----------
         get_running_apps : bool
-            Whether or not to get the ``running_apps`` property
+            Whether or not to get the :attr:`~androidtv.basetv.BaseTV.running_apps` property
 
         Returns
         -------
@@ -143,6 +143,15 @@ class FireTV(BaseTV):
             elif current_app == constants.APP_FIREFOX:
                 if wake_lock_size == 3:
                     state = constants.STATE_PLAYING
+                else:
+                    state = constants.STATE_STANDBY
+
+            # Hulu
+            elif current_app == constants.APP_HULU:
+                if wake_lock_size == 4:
+                    state = constants.STATE_PLAYING
+                elif wake_lock_size == 2:
+                    state = constants.STATE_PAUSED
                 else:
                     state = constants.STATE_STANDBY
 
