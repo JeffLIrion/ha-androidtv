@@ -6,70 +6,90 @@ ADB Debugging must be enabled.
 
 import logging
 import re
-from socket import error as socket_error
-import sys
-import threading
-
-from adb import adb_commands
-from adb.sign_pythonrsa import PythonRSASigner
-from adb_messenger.client import Client as AdbClient
 
 from . import constants
+from .adb_manager import ADBPython, ADBServer
 
-if sys.version_info[0] > 2 and sys.version_info[1] > 1:
-    LOCK_KWARGS = {'timeout': 3}
-else:
-    LOCK_KWARGS = {}
-    FileNotFoundError = IOError  # pylint: disable=redefined-builtin
+_LOGGER = logging.getLogger(__name__)
 
 
 class BaseTV(object):
-    """Base class for representing an Android TV / Fire TV device."""
+    """Base class for representing an Android TV / Fire TV device.
 
-    def __init__(self, host, adbkey='', adb_server_ip='', adb_server_port=5037):
-        """Initialize a ``BaseTV`` object.
+    The ``state_detection_rules`` parameter is of the format:
 
-        Parameters
-        ----------
-        host : str
-            The address of the device in the format ``<ip address>:<host>``
-        adbkey : str
-            The path to the ``adbkey`` file for ADB authentication
-        adb_server_ip : str
-            The IP address of the ADB server
-        adb_server_port : int
-            The port for the ADB server
+    .. code-block:: python
 
-        """
+       state_detection_rules = {'com.amazon.tv.launcher': ['standby'],
+                                'com.netflix.ninja': ['media_session_state'],
+                                'com.ellation.vrv': ['audio_state'],
+                                'com.hulu.plus': [{'playing': {'wake_lock_size' : 4}},
+                                                  {'paused': {'wake_lock_size': 2}}],
+                                'com.plexapp.android': [{'playing': {'media_session_state': 3, 'wake_lock_size': 3}},
+                                                        {'paused': {'media_session_state': 3, 'wake_lock_size': 1}},
+                                                        'standby']}
+
+    The keys are app IDs, and the values are lists of rules that are evaluated in order by the :meth:`_custom_state_detection` method.
+
+    :py:const:`~androidtv.constants.VALID_STATES`
+
+    .. code-block:: python
+
+       VALID_STATES = ('idle', 'off', 'playing', 'paused', 'standby')
+
+
+    **Valid rules:**
+
+    * ``'standby'``, ``'playing'``, ``'paused'``, ``'idle'``, or ``'off'`` = always report the specified state when this app is open
+    * ``'media_session_state'`` = try to use the :attr:`media_session_state` property to determine the state
+    * ``'audio_state'`` = try to use the :attr:`audio_state` property to determine the state
+    * ``{'<VALID_STATE>': {'<PROPERTY1>': VALUE1, '<PROPERTY2>': VALUE2, ...}}`` = check if each of the properties is equal to the specified value, and if so return the state
+
+      * The valid properties are ``'media_session_state'``, ``'audio_state'``, and ``'wake_lock_size'``
+
+
+    Parameters
+    ----------
+    host : str
+        The address of the device in the format ``<ip address>:<host>``
+    adbkey : str
+        The path to the ``adbkey`` file for ADB authentication
+    adb_server_ip : str
+        The IP address of the ADB server
+    adb_server_port : int
+        The port for the ADB server
+    state_detection_rules : dict, None
+        A dictionary of rules for determining the state (see above)
+
+    """
+
+    def __init__(self, host, adbkey='', adb_server_ip='', adb_server_port=5037, state_detection_rules=None):
         self.host = host
         self.adbkey = adbkey
         self.adb_server_ip = adb_server_ip
         self.adb_server_port = adb_server_port
+        self._state_detection_rules = state_detection_rules
+
+        # make sure the rules are valid
+        if self._state_detection_rules:
+            for app_id, rules in self._state_detection_rules.items():
+                if not isinstance(app_id, str):
+                    raise TypeError("{0} is of type {1}, not str".format(app_id, type(app_id).__name__))
+                state_detection_rules_validator(rules)
 
         # the max volume level (determined when first getting the volume level)
         self.max_volume = None
 
-        # keep track of whether the ADB connection is intact
-        self._available = False
-
-        # use a lock to make sure that ADB commands don't overlap
-        self._adb_lock = threading.Lock()
-
-        # the attributes used for sending ADB commands; filled in in `self.connect()`
-        self._adb = None  # python-adb
-        self._adb_client = None  # pure-python-adb
-        self._adb_device = None  # pure-python-adb
-
-        # the method used for sending ADB commands
-        if not self.adb_server_ip:
+        # the handler for ADB commands
+        if not adb_server_ip:
             # python-adb
-            self.adb_shell = self._adb_shell_python_adb
+            self.adb = ADBPython(host, adbkey)
         else:
             # pure-python-adb
-            self.adb_shell = self._adb_shell_pure_python_adb
+            self.adb = ADBServer(host, adb_server_ip, adb_server_port)
 
         # establish the ADB connection
-        self.connect()
+        self.adb.connect()
 
         # get device properties
         self.device_properties = self.get_device_properties()
@@ -79,8 +99,11 @@ class BaseTV(object):
     #                               ADB methods                               #
     #                                                                         #
     # ======================================================================= #
-    def _adb_shell_python_adb(self, cmd):
-        """Send an ADB command using the Python ADB implementation.
+    def adb_shell(self, cmd):
+        """Send an ADB command.
+
+        This calls :py:meth:`androidtv.adb_manager.ADBPython.shell` or :py:meth:`androidtv.adb_manager.ADBServer.shell`,
+        depending on whether the Python ADB implementation or an ADB server is used for communicating with the device.
 
         Parameters
         ----------
@@ -93,60 +116,7 @@ class BaseTV(object):
             The response from the device, if there is a response
 
         """
-        if not self.available:
-            logging.critical("ADB command not sent to %s because python-adb connection is not established: %s", self.host, cmd)
-            return None
-
-        if self._adb_lock.acquire(**LOCK_KWARGS):  # pylint: disable=unexpected-keyword-arg
-            logging.critical("Sending command to %s via python-adb: %s", self.host, cmd)
-            try:
-                return self._adb.Shell(cmd)
-            finally:
-                self._adb_lock.release()
-        else:
-            logging.critical("ADB command not sent to %s because python-adb lock not acquired: %s", self.host, cmd)
-
-        return None
-
-    def _adb_shell_pure_python_adb(self, cmd):
-        """Send an ADB command using an ADB server.
-
-        Parameters
-        ----------
-        cmd : str
-            The ADB command to be sent
-
-        Returns
-        -------
-        str, None
-            The response from the device, if there is a response
-
-        """
-        if not self._available:
-            logging.critical("ADB command not sent to %s via ADB server %s:%s because pure-python-adb connection is not established: %s", self.host, self.adb_server_ip, self.adb_server_port, cmd)
-            return None
-
-        if self._adb_lock.acquire(**LOCK_KWARGS):  # pylint: disable=unexpected-keyword-arg
-            logging.critical("Sending command to %s via ADB server %s:%s: %s", self.host, self.adb_server_ip, self.adb_server_port, cmd)
-            try:
-                return self._adb_device.shell(cmd)
-            finally:
-                self._adb_lock.release()
-        else:
-            logging.critical("ADB command not sent to %s via ADB server %s:%s because pure-python-adb lock not acquired: %s", self.host, self.adb_server_ip, self.adb_server_port, cmd)
-
-        return None
-
-    def _key(self, key):
-        """Send a key event to device.
-
-        Parameters
-        ----------
-        key : str, int
-            The Key constant
-
-        """
-        self.adb_shell('input keyevent {0}'.format(key))
+        return self.adb.shell(cmd)
 
     def connect(self, always_log_errors=True):
         """Connect to an Android TV / Fire TV device.
@@ -162,71 +132,18 @@ class BaseTV(object):
             Whether or not the connection was successfully established and the device is available
 
         """
-        self._adb_lock.acquire(**LOCK_KWARGS)  # pylint: disable=unexpected-keyword-arg
-        try:
-            if not self.adb_server_ip:
-                # python-adb
-                try:
-                    if self.adbkey:
-                        # private key
-                        with open(self.adbkey) as f:
-                            priv = f.read()
+        return self.adb.connect(always_log_errors)
 
-                        # public key
-                        try:
-                            with open(self.adbkey + '.pub') as f:
-                                pub = f.read()
-                        except FileNotFoundError:
-                            pub = ''
+    def _key(self, key):
+        """Send a key event to device.
 
-                        signer = PythonRSASigner(pub, priv)
+        Parameters
+        ----------
+        key : str, int
+            The Key constant
 
-                        # Connect to the device
-                        self._adb = adb_commands.AdbCommands().ConnectDevice(serial=self.host, rsa_keys=[signer], default_timeout_ms=9000)
-                    else:
-                        self._adb = adb_commands.AdbCommands().ConnectDevice(serial=self.host, default_timeout_ms=9000)
-
-                    # ADB connection successfully established
-                    self._available = True
-                    logging.critical("ADB connection to %s successfully established", self.host)
-
-                except socket_error as serr:
-                    if self._available or always_log_errors:
-                        if serr.strerror is None:
-                            serr.strerror = "Timed out trying to connect to ADB device."
-                        logging.warning("Couldn't connect to host %s, error: %s", self.host, serr.strerror)
-
-                    # ADB connection attempt failed
-                    self._adb = None
-                    self._available = False
-
-                finally:
-                    return self._available
-
-            else:
-                # pure-python-adb
-                try:
-                    self._adb_client = AdbClient(host=self.adb_server_ip, port=self.adb_server_port)
-                    self._adb_device = self._adb_client.device(self.host)
-                    self._available = bool(self._adb_device)
-
-                    if self._available:
-                        logging.critical("ADB connection to %s via ADB server %s:%s successfully established", self.host, self.adb_server_ip, self.adb_server_port)
-                    else:
-                        logging.critical("Couldn't connect to host %s via ADB server %s:%s", self.host, self.adb_server_ip, self.adb_server_port)
-
-                except Exception as exc:  # noqa pylint: disable=broad-except
-                    if self._available or always_log_errors:
-                        logging.warning("Couldn't connect to host %s via ADB server %s:%s, error: %s", self.host, self.adb_server_ip, self.adb_server_port, exc)
-
-                    # ADB connection attempt failed
-                    self._available = False
-
-                finally:
-                    return self._available
-
-        finally:
-            self._adb_lock.release()
+        """
+        self.adb.shell('input keyevent {0}'.format(key))
 
     # ======================================================================= #
     #                                                                         #
@@ -242,7 +159,7 @@ class BaseTV(object):
             A dictionary with keys ``'wifimac'``, ``'ethmac'``, ``'serialno'``, ``'manufacturer'``, ``'model'``, and ``'sw_version'``
 
         """
-        properties = self.adb_shell(constants.CMD_MANUFACTURER + " && " +
+        properties = self.adb.shell(constants.CMD_MANUFACTURER + " && " +
                                     constants.CMD_MODEL + " && " +
                                     constants.CMD_SERIALNO + " && " +
                                     constants.CMD_VERSION + " && " +
@@ -257,6 +174,10 @@ class BaseTV(object):
             return {}
 
         manufacturer, model, serialno, version, mac_wlan0_output, mac_eth0_output = lines
+
+        if not serialno.strip():
+            _LOGGER.warning("Could not obtain serialno for %s, got: '%s'", self.host, serialno)
+            serialno = None
 
         mac_wlan0_matches = re.findall(constants.MAC_REGEX_PATTERN, mac_wlan0_output)
         if mac_wlan0_matches:
@@ -281,6 +202,102 @@ class BaseTV(object):
 
     # ======================================================================= #
     #                                                                         #
+    #                         Custom state detection                          #
+    #                                                                         #
+    # ======================================================================= #
+    def _custom_state_detection(self, current_app=None, media_session_state=None, wake_lock_size=None, audio_state=None):
+        """Use the rules in ``self._state_detection_rules`` to determine the state.
+
+        Parameters
+        ----------
+        current_app : str, None
+            The :attr:`current_app` property
+        media_session_state : int, None
+            The :attr:`media_session_state` property
+        wake_lock_size : int, None
+            The :attr:`wake_lock_size` property
+        audio_state : str, None
+            The :attr:`audio_state` property
+
+        Returns
+        -------
+        str, None
+            The state, if it could be determined using the rules in ``self._state_detection_rules``; otherwise, ``None``
+
+        """
+        if not self._state_detection_rules or current_app is None or current_app not in self._state_detection_rules:
+            return None
+
+        rules = self._state_detection_rules[current_app]
+
+        for rule in rules:
+            # The state is always the same for this app
+            if rule in constants.VALID_STATES:
+                return rule
+
+            # Use the `media_session_state` property
+            if rule == 'media_session_state':
+                if media_session_state == 2:
+                    return constants.STATE_PAUSED
+                if media_session_state == 3:
+                    return constants.STATE_PLAYING
+                if media_session_state is not None:
+                    return constants.STATE_STANDBY
+
+            # Use the `audio_state` property
+            if rule == 'audio_state' and audio_state in constants.VALID_STATES:
+                return audio_state
+
+            # Check conditions and if they are true, return the specified state
+            if isinstance(rule, dict):
+                for state, conditions in rule.items():
+                    if state in constants.VALID_STATES and self._conditions_are_true(conditions, media_session_state, wake_lock_size, audio_state):
+                        return state
+
+        return None
+
+    @staticmethod
+    def _conditions_are_true(conditions, media_session_state=None, wake_lock_size=None, audio_state=None):
+        """Check whether the conditions in ``conditions`` are true.
+
+        Parameters
+        ----------
+        conditions : dict
+            A dictionary of conditions to be checked (see the ``state_detection_rules`` parameter in :class:`~androidtv.basetv.BaseTV`)
+        media_session_state : int, None
+            The :attr:`media_session_state` property
+        wake_lock_size : int, None
+            The :attr:`wake_lock_size` property
+        audio_state : str, None
+            The :attr:`audio_state` property
+
+        Returns
+        -------
+        bool
+            Whether or not all the conditions in ``conditions`` are true
+
+        """
+        for key, val in conditions.items():
+            if key == 'media_session_state':
+                if media_session_state is None or media_session_state != val:
+                    return False
+
+            elif key == 'wake_lock_size':
+                if wake_lock_size is None or wake_lock_size != val:
+                    return False
+
+            elif key == 'audio_state':
+                if audio_state is None or audio_state != val:
+                    return False
+
+            # key is invalid
+            else:
+                return False
+
+        return True
+
+    # ======================================================================= #
+    #                                                                         #
     #                               Properties                                #
     #                                                                         #
     # ======================================================================= #
@@ -291,17 +308,11 @@ class BaseTV(object):
         Returns
         -------
         str, None
-            The audio state, as determined from the ADB shell command ``dumpsys audio``, or ``None`` if it could not be determined
+            The audio state, as determined from the ADB shell command :py:const:`androidtv.constants.CMD_AUDIO_STATE`, or ``None`` if it could not be determined
 
         """
-        audio_state_response = self.adb_shell(constants.CMD_AUDIO_STATE)
-        if audio_state_response is None:
-            return None
-        if audio_state_response == '1':
-            return constants.STATE_PAUSED
-        if audio_state_response == '2':
-            return constants.STATE_PLAYING
-        return constants.STATE_IDLE
+        audio_state_response = self.adb.shell(constants.CMD_AUDIO_STATE)
+        return self._audio_state(audio_state_response)
 
     @property
     def available(self):
@@ -313,40 +324,7 @@ class BaseTV(object):
             Whether or not the ADB connection is intact
 
         """
-        if not self.adb_server_ip:
-            # python-adb
-            return bool(self._adb)
-
-        # pure-python-adb
-        try:
-            # make sure the server is available
-            adb_devices = self._adb_client.devices()
-
-            # make sure the device is available
-            try:
-                # case 1: the device is currently available
-                if any([self.host in dev.get_serial_no() for dev in adb_devices]):
-                    if not self._available:
-                        self._available = True
-                    return True
-
-                # case 2: the device is not currently available
-                if self._available:
-                    logging.error('ADB server is not connected to the device.')
-                    self._available = False
-                return False
-
-            except RuntimeError:
-                if self._available:
-                    logging.error('ADB device is unavailable; encountered an error when searching for device.')
-                    self._available = False
-                return False
-
-        except RuntimeError:
-            if self._available:
-                logging.error('ADB server is unavailable.')
-                self._available = False
-            return False
+        return self.adb.available
 
     @property
     def awake(self):
@@ -358,7 +336,7 @@ class BaseTV(object):
             Whether or not the device is awake (screensaver is not running)
 
         """
-        return self.adb_shell(constants.CMD_AWAKE + constants.CMD_SUCCESS1_FAILURE0) == '1'
+        return self.adb.shell(constants.CMD_AWAKE + constants.CMD_SUCCESS1_FAILURE0) == '1'
 
     @property
     def current_app(self):
@@ -370,7 +348,7 @@ class BaseTV(object):
             The ID of the current app, or ``None`` if it could not be determined
 
         """
-        current_app_response = self.adb_shell(constants.CMD_CURRENT_APP)
+        current_app_response = self.adb.shell(constants.CMD_CURRENT_APP)
 
         return self._current_app(current_app_response)
 
@@ -412,7 +390,7 @@ class BaseTV(object):
             The state from the output of the ADB shell command ``dumpsys media_session``, or ``None`` if it could not be determined
 
         """
-        media_session_state_response = self.adb_shell(constants.CMD_MEDIA_SESSION_STATE_FULL)
+        media_session_state_response = self.adb.shell(constants.CMD_MEDIA_SESSION_STATE_FULL)
 
         _, media_session_state = self._current_app_media_session_state(media_session_state_response)
 
@@ -428,7 +406,7 @@ class BaseTV(object):
             A list of the running apps
 
         """
-        running_apps_response = self.adb_shell(constants.CMD_RUNNING_APPS)
+        running_apps_response = self.adb.shell(constants.CMD_RUNNING_APPS)
 
         return self._running_apps(running_apps_response)
 
@@ -442,7 +420,7 @@ class BaseTV(object):
             Whether or not the device is on
 
         """
-        return self.adb_shell(constants.CMD_SCREEN_ON + constants.CMD_SUCCESS1_FAILURE0) == '1'
+        return self.adb.shell(constants.CMD_SCREEN_ON + constants.CMD_SUCCESS1_FAILURE0) == '1'
 
     @property
     def volume(self):
@@ -483,7 +461,7 @@ class BaseTV(object):
             The size of the current wake lock, or ``None`` if it could not be determined
 
         """
-        wake_lock_size_response = self.adb_shell(constants.CMD_WAKE_LOCK_SIZE)
+        wake_lock_size_response = self.adb.shell(constants.CMD_WAKE_LOCK_SIZE)
 
         return self._wake_lock_size(wake_lock_size_response)
 
@@ -493,13 +471,13 @@ class BaseTV(object):
     #                                                                         #
     # ======================================================================= #
     @staticmethod
-    def _audio_state(dumpsys_audio_response):
-        """Parse the ``audio_state`` property from the output of ``adb shell dumpsys audio``.
+    def _audio_state(audio_state_response):
+        """Parse the :attr:`audio_state` property from the output of the command :py:const:`androidtv.constants.CMD_AUDIO_STATE`.
 
         Parameters
         ----------
-        dumpsys_audio_response : str, None
-            The output of ``adb shell dumpsys audio``
+        audio_state_response : str, None
+            The output of the command :py:const:`androidtv.constants.CMD_AUDIO_STATE`
 
         Returns
         -------
@@ -507,18 +485,12 @@ class BaseTV(object):
             The audio state, or ``None`` if it could not be determined
 
         """
-        if not dumpsys_audio_response:
+        if not audio_state_response:
             return None
-
-        for line in dumpsys_audio_response.splitlines():
-            if 'OpenSL ES AudioPlayer (Buffer Queue)' in line:
-                # ignore this line which can cause false positives for some apps (e.g. VRV)
-                continue
-            if 'started' in line:
-                return constants.STATE_PLAYING
-            if 'paused' in line:
-                return constants.STATE_PAUSED
-
+        if audio_state_response == '1':
+            return constants.STATE_PAUSED
+        if audio_state_response == '2':
+            return constants.STATE_PLAYING
         return constants.STATE_IDLE
 
     @staticmethod
@@ -595,27 +567,27 @@ class BaseTV(object):
 
         return None
 
-    def _get_stream_music(self, dumpsys_audio_response=None):
-        """Get the ``STREAM_MUSIC`` block from ``adb shell dumpsys audio``.
+    def _get_stream_music(self, stream_music_raw=None):
+        """Get the ``STREAM_MUSIC`` block from the output of the command :py:const:`androidtv.constants.CMD_STREAM_MUSIC`.
 
         Parameters
         ----------
-        dumpsys_audio_response : str, None
-            The output of ``adb shell dumpsys audio``
+        stream_music_raw : str, None
+            The output of the command :py:const:`androidtv.constants.CMD_STREAM_MUSIC`
 
         Returns
         -------
         str, None
-            The ``STREAM_MUSIC`` block from ``adb shell dumpsys audio``, or ``None`` if it could not be determined
+            The ``STREAM_MUSIC`` block from the output of :py:const:`androidtv.constants.CMD_STREAM_MUSIC`, or ``None`` if it could not be determined
 
         """
-        if not dumpsys_audio_response:
-            dumpsys_audio_response = self.adb_shell("dumpsys audio")
+        if not stream_music_raw:
+            stream_music_raw = self.adb.shell(constants.CMD_STREAM_MUSIC)
 
-        if not dumpsys_audio_response:
+        if not stream_music_raw:
             return None
 
-        matches = re.findall(constants.STREAM_MUSIC_REGEX_PATTERN, dumpsys_audio_response, re.DOTALL | re.MULTILINE)
+        matches = re.findall(constants.STREAM_MUSIC_REGEX_PATTERN, stream_music_raw, re.DOTALL | re.MULTILINE)
         if matches:
             return matches[0]
 
@@ -763,7 +735,9 @@ class BaseTV(object):
 
         """
         if wake_lock_size_response:
-            return int(wake_lock_size_response.split("=")[1].strip())
+            wake_lock_size_matches = constants.REGEX_WAKE_LOCK_SIZE.search(wake_lock_size_response)
+            if wake_lock_size_matches:
+                return int(wake_lock_size_matches.group('size'))
 
         return None
 
@@ -1050,7 +1024,7 @@ class BaseTV(object):
             cmd = "(" + " && sleep 1 && ".join(["input keyevent {0}".format(constants.KEY_VOLUME_UP)] * int(new_volume - current_volume)) + ") &"
 
         # send the volume down/up commands
-        self.adb_shell(cmd)
+        self.adb.shell(cmd)
 
         # return the new volume level
         return new_volume / self.max_volume
@@ -1112,3 +1086,63 @@ class BaseTV(object):
 
         # return the new volume level
         return max(current_volume - 1, 0.) / self.max_volume
+
+
+# ======================================================================= #
+#                                                                         #
+#                    Validate the state detection rules                   #
+#                                                                         #
+# ======================================================================= #
+def state_detection_rules_validator(rules, exc=KeyError):
+    """Validate the rules (i.e., the ``state_detection_rules`` value) for a given app ID (i.e., a key in ``state_detection_rules``).
+
+    See :class:`~androidtv.basetv.BaseTV` for more info about the ``state_detection_rules`` parameter.
+
+    Parameters
+    ----------
+    rules : list
+        A list of the rules that will be used to determine the state
+    exc : Exception
+        The exception that will be raised if a rule is invalid
+
+    Returns
+    -------
+    rules : list
+        The provided list of rules
+
+    """
+    for rule in rules:
+        # A rule must be either a string or a dictionary
+        if not isinstance(rule, (str, dict)):
+            raise exc("Expected a string or a map, got {}".format(type(rule).__name__))
+
+        # If a rule is a string, check that it is valid
+        if isinstance(rule, str):
+            if rule not in constants.VALID_PROPERTIES + constants.VALID_STATES:
+                raise exc("Invalid rule '{0}' is not in {1}".format(rule, constants.VALID_PROPERTIES + constants.VALID_STATES))
+
+        # If a rule is a dictionary, check that it is valid
+        else:
+            for state, conditions in rule.items():
+                # The keys of the dictionary must be valid states
+                if state not in constants.VALID_STATES:
+                    raise exc("'{0}' is not a valid state for the 'state_detection_rules' parameter".format(state))
+
+                # The values of the dictionary must be dictionaries
+                if not isinstance(conditions, dict):
+                    raise exc("Expected a map for entry '{0}' in 'state_detection_rules', got {1}".format(state, type(conditions).__name__))
+
+                for condition, value in conditions.items():
+                    # The keys of the dictionary must be valid conditions that can be checked
+                    if condition not in constants.VALID_CONDITIONS:
+                        raise exc("Invalid property '{0}' is not in {1}".format(condition, constants.VALID_CONDITIONS))
+
+                    # The value for the `audio_state` property must be a string
+                    if condition == "audio_state" and not isinstance(value, str):
+                        raise exc("Conditional value for property 'audio_state' must be a string, not {}".format(type(value).__name__))
+
+                    # The value for the `media_session_state` and `wake_lock_size` properties must be an int
+                    if condition != "audio_state" and not isinstance(value, int):
+                        raise exc("Conditional value for property '{0}' must be an int, not {1}".format(condition, type(value).__name__))
+
+    return rules

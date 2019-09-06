@@ -1,9 +1,9 @@
 {
   "domain": "androidtv",
-  "name": "Android TV",
+  "name": "Androidtv",
   "documentation": "https://www.home-assistant.io/components/androidtv",
   "requirements": [
-    "androidtv==0.0.18", "adb-homeassistant==1.3.2", "pure-python-adb-homeassistant==0.1.7.dev0"
+    "androidtv==0.0.26"
   ],
   "dependencies": [],
   "codeowners": ["@JeffLIrion"]

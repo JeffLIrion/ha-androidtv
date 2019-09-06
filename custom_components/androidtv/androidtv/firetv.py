@@ -9,6 +9,8 @@ import logging
 from .basetv import BaseTV
 from . import constants
 
+_LOGGER = logging.getLogger(__name__)
+
 
 # Apps
 APP_PACKAGE_LAUNCHER = "com.amazon.tv.launcher"
@@ -20,12 +22,7 @@ INTENT_HOME = "android.intent.category.HOME"
 
 
 class FireTV(BaseTV):
-    """Representation of an Amazon Fire TV device."""
-
-    DEVICE_CLASS = 'firetv'
-
-    def __init__(self, host, adbkey='', adb_server_ip='', adb_server_port=5037):
-        """Initialize a ``FireTV`` object.
+    """Representation of an Amazon Fire TV device.
 
         Parameters
         ----------
@@ -37,9 +34,15 @@ class FireTV(BaseTV):
             The IP address of the ADB server
         adb_server_port : int
             The port for the ADB server
+        state_detection_rules : dict, None
+            A dictionary of rules for determining the state (see :class:`~androidtv.basetv.BaseTV`)
 
         """
-        BaseTV.__init__(self, host, adbkey, adb_server_ip, adb_server_port)
+
+    DEVICE_CLASS = 'firetv'
+
+    def __init__(self, host, adbkey='', adb_server_ip='', adb_server_port=5037, state_detection_rules=None):
+        BaseTV.__init__(self, host, adbkey, adb_server_ip, adb_server_port, state_detection_rules)
 
     # ======================================================================= #
     #                                                                         #
@@ -68,7 +71,7 @@ class FireTV(BaseTV):
 
         # adb shell outputs in weird format, so we cut it into lines,
         # separate the retcode and return info to the user
-        res = self.adb_shell(cmd)
+        res = self.adb.shell(cmd)
         if res is None:
             return {}
 
@@ -89,7 +92,7 @@ class FireTV(BaseTV):
         Parameters
         ----------
         get_running_apps : bool
-            Whether or not to get the ``running_apps`` property
+            Whether or not to get the :attr:`~androidtv.basetv.BaseTV.running_apps` property
 
         Returns
         -------
@@ -104,8 +107,14 @@ class FireTV(BaseTV):
         # Get the properties needed for the update
         screen_on, awake, wake_lock_size, current_app, media_session_state, running_apps = self.get_properties(get_running_apps=get_running_apps, lazy=True)
 
+        # Check if device is unavailable
+        if screen_on is None:
+            state = None
+            current_app = None
+            running_apps = None
+
         # Check if device is off
-        if not screen_on:
+        elif not screen_on:
             state = constants.STATE_OFF
             current_app = None
             running_apps = None
@@ -118,8 +127,13 @@ class FireTV(BaseTV):
 
         else:
             # Get the running apps
-            if running_apps is None and current_app:
+            if not running_apps and current_app:
                 running_apps = [current_app]
+
+            # Determine the state using custom rules
+            state = self._custom_state_detection(current_app=current_app, media_session_state=media_session_state, wake_lock_size=wake_lock_size)
+            if state:
+                return state, current_app, running_apps
 
             # Determine the state based on the `current_app`
             if current_app in [APP_PACKAGE_LAUNCHER, APP_PACKAGE_SETTINGS, None]:
@@ -137,6 +151,15 @@ class FireTV(BaseTV):
             elif current_app == constants.APP_FIREFOX:
                 if wake_lock_size == 3:
                     state = constants.STATE_PLAYING
+                else:
+                    state = constants.STATE_STANDBY
+
+            # Hulu
+            elif current_app == constants.APP_HULU:
+                if wake_lock_size == 4:
+                    state = constants.STATE_PLAYING
+                elif wake_lock_size == 2:
+                    state = constants.STATE_PAUSED
                 else:
                     state = constants.STATE_STANDBY
 
@@ -247,7 +270,7 @@ class FireTV(BaseTV):
             The output of the ``am force-stop`` ADB shell command, or ``None`` if the device is unavailable
 
         """
-        return self.adb_shell("am force-stop {0}".format(app))
+        return self.adb.shell("am force-stop {0}".format(app))
 
     # ======================================================================= #
     #                                                                         #
@@ -260,7 +283,7 @@ class FireTV(BaseTV):
         Parameters
         ----------
         get_running_apps : bool
-            Whether or not to get the ``running_apps`` property
+            Whether or not to get the :attr:`~androidtv.basetv.BaseTV.running_apps` property
         lazy : bool
             Whether or not to continue retrieving properties if the device is off or the screensaver is running
 
@@ -281,19 +304,19 @@ class FireTV(BaseTV):
 
         """
         if get_running_apps:
-            output = self.adb_shell(constants.CMD_SCREEN_ON + (constants.CMD_SUCCESS1 if lazy else constants.CMD_SUCCESS1_FAILURE0) + " && " +
+            output = self.adb.shell(constants.CMD_SCREEN_ON + (constants.CMD_SUCCESS1 if lazy else constants.CMD_SUCCESS1_FAILURE0) + " && " +
                                     constants.CMD_AWAKE + (constants.CMD_SUCCESS1 if lazy else constants.CMD_SUCCESS1_FAILURE0) + " && " +
                                     constants.CMD_WAKE_LOCK_SIZE + " && " +
                                     constants.CMD_CURRENT_APP + " && (" +
                                     constants.CMD_MEDIA_SESSION_STATE + " || echo) && " +
                                     constants.CMD_RUNNING_APPS)
         else:
-            output = self.adb_shell(constants.CMD_SCREEN_ON + (constants.CMD_SUCCESS1 if lazy else constants.CMD_SUCCESS1_FAILURE0) + " && " +
+            output = self.adb.shell(constants.CMD_SCREEN_ON + (constants.CMD_SUCCESS1 if lazy else constants.CMD_SUCCESS1_FAILURE0) + " && " +
                                     constants.CMD_AWAKE + (constants.CMD_SUCCESS1 if lazy else constants.CMD_SUCCESS1_FAILURE0) + " && " +
                                     constants.CMD_WAKE_LOCK_SIZE + " && " +
                                     constants.CMD_CURRENT_APP + " && (" +
                                     constants.CMD_MEDIA_SESSION_STATE + " || echo)")
-        logging.critical("Fire TV %s update response: %s", self.host, output)
+        _LOGGER.debug("Fire TV %s update response: %s", self.host, output)
 
         # ADB command was unsuccessful
         if output is None:
@@ -339,7 +362,7 @@ class FireTV(BaseTV):
         Parameters
         ----------
         get_running_apps : bool
-            Whether or not to get the ``running_apps`` property
+            Whether or not to get the :attr:`~androidtv.basetv.BaseTV.running_apps` property
         lazy : bool
             Whether or not to continue retrieving properties if the device is off or the screensaver is running
 
@@ -366,8 +389,8 @@ class FireTV(BaseTV):
     # ======================================================================= #
     def turn_on(self):
         """Send ``POWER`` and ``HOME`` actions if the device is off."""
-        self.adb_shell(constants.CMD_SCREEN_ON + " || (input keyevent {0} && input keyevent {1})".format(constants.KEY_POWER, constants.KEY_HOME))
+        self.adb.shell(constants.CMD_SCREEN_ON + " || (input keyevent {0} && input keyevent {1})".format(constants.KEY_POWER, constants.KEY_HOME))
 
     def turn_off(self):
         """Send ``SLEEP`` action if the device is not off."""
-        self.adb_shell(constants.CMD_SCREEN_ON + " && input keyevent {0}".format(constants.KEY_SLEEP))
+        self.adb.shell(constants.CMD_SCREEN_ON + " && input keyevent {0}".format(constants.KEY_SLEEP))
