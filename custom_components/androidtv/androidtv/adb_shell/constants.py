@@ -21,13 +21,13 @@ MAX_ADB_DATA = 4096
 #: ADB protocol version.
 VERSION = 0x01000000
 
-#: AUTH constant for arg0.
+#: AUTH constant for ``arg0``
 AUTH_TOKEN = 1
 
-#: AUTH constant for arg0.
+#: AUTH constant for ``arg0``
 AUTH_SIGNATURE = 2
 
-#: AUTH constant for arg0.
+#: AUTH constant for ``arg0``
 AUTH_RSAPUBLICKEY = 3
 
 AUTH = b'AUTH'
@@ -53,12 +53,6 @@ MESSAGE_FORMAT = b'<6I'
 
 #: The size of an ADB message
 MESSAGE_SIZE = struct.calcsize(MESSAGE_FORMAT)
-
-# Default timeout (in ms) for :meth:`adb_shell.adb_device.AdbDevice.shell`
-DEFAULT_TIMEOUT_MS = 9000
-
-#: Default timeout (in s) for :meth:`adb_shell.tcp_handle.TcpHandle.bulk_read` and :meth:`adb_shell.tcp_handle.TcpHandle.bulk_write`
-DEFAULT_TIMEOUT_S = DEFAULT_TIMEOUT_MS / 1000.
 
 #: Default authentication timeout (in s) for :meth:`adb_shell.tcp_handle.TcpHandle.connect`
 DEFAULT_AUTH_TIMEOUT_S = 10.
