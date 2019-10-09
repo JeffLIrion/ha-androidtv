@@ -27,13 +27,15 @@ class AndroidTV(BaseTV):
         The port for the ADB server
     state_detection_rules : dict, None
         A dictionary of rules for determining the state (see :class:`~androidtv.basetv.BaseTV`)
+    auth_timeout_s : float
+        Authentication timeout (in seconds)
 
     """
 
     DEVICE_CLASS = 'androidtv'
 
-    def __init__(self, host, adbkey='', adb_server_ip='', adb_server_port=5037, state_detection_rules=None):
-        BaseTV.__init__(self, host, adbkey, adb_server_ip, adb_server_port, state_detection_rules)
+    def __init__(self, host, adbkey='', adb_server_ip='', adb_server_port=5037, state_detection_rules=None, auth_timeout_s=constants.DEFAULT_AUTH_TIMEOUT_S):
+        BaseTV.__init__(self, host, adbkey, adb_server_ip, adb_server_port, state_detection_rules, auth_timeout_s)
 
     # ======================================================================= #
     #                                                                         #
@@ -49,7 +51,7 @@ class AndroidTV(BaseTV):
             The intent that will be sent is ``am start -a android.intent.action.VIEW -d <uri>``
 
         """
-        self.adb.shell("am start -a android.intent.action.VIEW -d {}".format(uri))
+        self._adb.shell("am start -a android.intent.action.VIEW -d {}".format(uri))
 
     # ======================================================================= #
     #                                                                         #
@@ -214,9 +216,9 @@ class AndroidTV(BaseTV):
 
         """
         if lazy:
-            output = self.adb.shell(constants.CMD_ANDROIDTV_PROPERTIES_LAZY)
+            output = self._adb.shell(constants.CMD_ANDROIDTV_PROPERTIES_LAZY)
         else:
-            output = self.adb.shell(constants.CMD_ANDROIDTV_PROPERTIES_NOT_LAZY)
+            output = self._adb.shell(constants.CMD_ANDROIDTV_PROPERTIES_NOT_LAZY)
         _LOGGER.debug("Android TV %s update response: %s", self.host, output)
 
         # ADB command was unsuccessful
@@ -310,8 +312,8 @@ class AndroidTV(BaseTV):
     # ======================================================================= #
     def turn_on(self):
         """Send ``POWER`` action if the device is off."""
-        self.adb.shell(constants.CMD_SCREEN_ON + " || input keyevent {0}".format(constants.KEY_POWER))
+        self._adb.shell(constants.CMD_SCREEN_ON + " || input keyevent {0}".format(constants.KEY_POWER))
 
     def turn_off(self):
         """Send ``POWER`` action if the device is not off."""
-        self.adb.shell(constants.CMD_SCREEN_ON + " && input keyevent {0}".format(constants.KEY_POWER))
+        self._adb.shell(constants.CMD_SCREEN_ON + " && input keyevent {0}".format(constants.KEY_POWER))

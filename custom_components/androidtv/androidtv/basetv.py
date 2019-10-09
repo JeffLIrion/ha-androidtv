@@ -60,10 +60,12 @@ class BaseTV(object):
         The port for the ADB server
     state_detection_rules : dict, None
         A dictionary of rules for determining the state (see above)
+    auth_timeout_s : float
+        Authentication timeout (in seconds)
 
     """
 
-    def __init__(self, host, adbkey='', adb_server_ip='', adb_server_port=5037, state_detection_rules=None):
+    def __init__(self, host, adbkey='', adb_server_ip='', adb_server_port=5037, state_detection_rules=None, auth_timeout_s=constants.DEFAULT_AUTH_TIMEOUT_S):
         self.host = host
         self.adbkey = adbkey
         self.adb_server_ip = adb_server_ip
@@ -83,13 +85,13 @@ class BaseTV(object):
         # the handler for ADB commands
         if not adb_server_ip:
             # python-adb
-            self.adb = ADBPython(host, adbkey)
+            self._adb = ADBPython(host, adbkey)
         else:
             # pure-python-adb
-            self.adb = ADBServer(host, adb_server_ip, adb_server_port)
+            self._adb = ADBServer(host, adb_server_ip, adb_server_port)
 
         # establish the ADB connection
-        self.adb.connect()
+        self.adb_connect(auth_timeout_s=auth_timeout_s)
 
         # get device properties
         self.device_properties = self.get_device_properties()
@@ -116,15 +118,17 @@ class BaseTV(object):
             The response from the device, if there is a response
 
         """
-        return self.adb.shell(cmd)
+        return self._adb.shell(cmd)
 
-    def connect(self, always_log_errors=True):
+    def adb_connect(self, always_log_errors=True, auth_timeout_s=constants.DEFAULT_AUTH_TIMEOUT_S):
         """Connect to an Android TV / Fire TV device.
 
         Parameters
         ----------
         always_log_errors : bool
             If True, errors will always be logged; otherwise, errors will only be logged on the first failed reconnect attempt
+        auth_timeout_s : float
+            Authentication timeout (in seconds)
 
         Returns
         -------
@@ -132,7 +136,18 @@ class BaseTV(object):
             Whether or not the connection was successfully established and the device is available
 
         """
-        return self.adb.connect(always_log_errors)
+        if isinstance(self._adb, ADBPython):
+            return self._adb.connect(always_log_errors, auth_timeout_s)
+        return self._adb.connect(always_log_errors)
+
+    def adb_close(self):
+        """Close the ADB connection.
+
+        This only works for the Python ADB implementation (see :meth:`androidtv.adb_manager.ADBPython.close`).
+        For the ADB server approach, this doesn't do anything (see :meth:`androidtv.adb_manager.ADBServer.close`).
+
+        """
+        self._adb.close()
 
     def _key(self, key):
         """Send a key event to device.
@@ -143,7 +158,7 @@ class BaseTV(object):
             The Key constant
 
         """
-        self.adb.shell('input keyevent {0}'.format(key))
+        self._adb.shell('input keyevent {0}'.format(key))
 
     # ======================================================================= #
     #                                                                         #
@@ -159,12 +174,12 @@ class BaseTV(object):
             A dictionary with keys ``'wifimac'``, ``'ethmac'``, ``'serialno'``, ``'manufacturer'``, ``'model'``, and ``'sw_version'``
 
         """
-        properties = self.adb.shell(constants.CMD_MANUFACTURER + " && " +
-                                    constants.CMD_MODEL + " && " +
-                                    constants.CMD_SERIALNO + " && " +
-                                    constants.CMD_VERSION + " && " +
-                                    constants.CMD_MAC_WLAN0 + " && " +
-                                    constants.CMD_MAC_ETH0)
+        properties = self._adb.shell(constants.CMD_MANUFACTURER + " && " +
+                                     constants.CMD_MODEL + " && " +
+                                     constants.CMD_SERIALNO + " && " +
+                                     constants.CMD_VERSION + " && " +
+                                     constants.CMD_MAC_WLAN0 + " && " +
+                                     constants.CMD_MAC_ETH0)
 
         if not properties:
             return {}
@@ -311,7 +326,7 @@ class BaseTV(object):
             The audio state, as determined from the ADB shell command :py:const:`androidtv.constants.CMD_AUDIO_STATE`, or ``None`` if it could not be determined
 
         """
-        audio_state_response = self.adb.shell(constants.CMD_AUDIO_STATE)
+        audio_state_response = self._adb.shell(constants.CMD_AUDIO_STATE)
         return self._audio_state(audio_state_response)
 
     @property
@@ -324,7 +339,7 @@ class BaseTV(object):
             Whether or not the ADB connection is intact
 
         """
-        return self.adb.available
+        return self._adb.available
 
     @property
     def awake(self):
@@ -336,7 +351,7 @@ class BaseTV(object):
             Whether or not the device is awake (screensaver is not running)
 
         """
-        return self.adb.shell(constants.CMD_AWAKE + constants.CMD_SUCCESS1_FAILURE0) == '1'
+        return self._adb.shell(constants.CMD_AWAKE + constants.CMD_SUCCESS1_FAILURE0) == '1'
 
     @property
     def current_app(self):
@@ -348,7 +363,7 @@ class BaseTV(object):
             The ID of the current app, or ``None`` if it could not be determined
 
         """
-        current_app_response = self.adb.shell(constants.CMD_CURRENT_APP)
+        current_app_response = self._adb.shell(constants.CMD_CURRENT_APP)
 
         return self._current_app(current_app_response)
 
@@ -390,7 +405,7 @@ class BaseTV(object):
             The state from the output of the ADB shell command ``dumpsys media_session``, or ``None`` if it could not be determined
 
         """
-        media_session_state_response = self.adb.shell(constants.CMD_MEDIA_SESSION_STATE_FULL)
+        media_session_state_response = self._adb.shell(constants.CMD_MEDIA_SESSION_STATE_FULL)
 
         _, media_session_state = self._current_app_media_session_state(media_session_state_response)
 
@@ -406,7 +421,7 @@ class BaseTV(object):
             A list of the running apps
 
         """
-        running_apps_response = self.adb.shell(constants.CMD_RUNNING_APPS)
+        running_apps_response = self._adb.shell(constants.CMD_RUNNING_APPS)
 
         return self._running_apps(running_apps_response)
 
@@ -420,7 +435,7 @@ class BaseTV(object):
             Whether or not the device is on
 
         """
-        return self.adb.shell(constants.CMD_SCREEN_ON + constants.CMD_SUCCESS1_FAILURE0) == '1'
+        return self._adb.shell(constants.CMD_SCREEN_ON + constants.CMD_SUCCESS1_FAILURE0) == '1'
 
     @property
     def volume(self):
@@ -461,7 +476,7 @@ class BaseTV(object):
             The size of the current wake lock, or ``None`` if it could not be determined
 
         """
-        wake_lock_size_response = self.adb.shell(constants.CMD_WAKE_LOCK_SIZE)
+        wake_lock_size_response = self._adb.shell(constants.CMD_WAKE_LOCK_SIZE)
 
         return self._wake_lock_size(wake_lock_size_response)
 
@@ -582,7 +597,7 @@ class BaseTV(object):
 
         """
         if not stream_music_raw:
-            stream_music_raw = self.adb.shell(constants.CMD_STREAM_MUSIC)
+            stream_music_raw = self._adb.shell(constants.CMD_STREAM_MUSIC)
 
         if not stream_music_raw:
             return None
@@ -1024,7 +1039,7 @@ class BaseTV(object):
             cmd = "(" + " && sleep 1 && ".join(["input keyevent {0}".format(constants.KEY_VOLUME_UP)] * int(new_volume - current_volume)) + ") &"
 
         # send the volume down/up commands
-        self.adb.shell(cmd)
+        self._adb.shell(cmd)
 
         # return the new volume level
         return new_volume / self.max_volume
