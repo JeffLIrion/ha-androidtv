@@ -45,6 +45,6 @@ rm -rf ppadb
 git clone https://github.com/Swind/pure-python-adb.git
 mv pure-python-adb/ppadb androidtv/
 rm -rf pure-python-adb
-cd androidtv/ppadb
+cd androidtv
 grep -rl "from ppadb" . | xargs sed -i 's/from ppadb/from custom_components.androidtv.androidtv.ppadb/g'
-
+sed -i "s|raise RuntimeError|pass  # raise RuntimeError|g" ppadb/utils/logger.py
