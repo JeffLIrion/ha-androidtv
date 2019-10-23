@@ -41,7 +41,7 @@ sed -i "s|from adb_shell|from .androidtv.adb_shell|g" media_player.py
 sed -i "s|from adb_shell|from .adb_shell|g" androidtv/adb_manager.py
 
 # 6. Include pure-python-adb
-rm -rf ppadb
+rm -rf androidtv/ppadb
 git clone https://github.com/Swind/pure-python-adb.git
 mv pure-python-adb/ppadb androidtv/
 rm -rf pure-python-adb
