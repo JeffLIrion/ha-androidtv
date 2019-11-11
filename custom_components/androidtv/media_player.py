@@ -269,6 +269,8 @@ def adb_decorator(override_available=False):
 
             try:
                 return func(self, *args, **kwargs)
+            except TcpTimeoutException:
+                return None
             except self.exceptions as err:
                 _LOGGER.error(
                     "Failed to execute an ADB command. ADB connection re-"
@@ -462,13 +464,17 @@ class AndroidTVDevice(ADBDevice):
             return
 
         # Get the updated state and attributes.
+        update_response = self.aftv.update()
+        if update_response is None:
+            return
+
         (
             state,
             self._current_app,
             self._device,
             self._is_volume_muted,
             self._volume_level,
-        ) = self.aftv.update()
+        ) = update_response
 
         self._state = ANDROIDTV_STATES.get(state)
         if self._state is None:
@@ -545,7 +551,11 @@ class FireTVDevice(ADBDevice):
             return
 
         # Get the `state`, `current_app`, and `running_apps`.
-        state, self._current_app, running_apps = self.aftv.update(self._get_sources)
+        update_response = self.aftv.update(self._get_sources)
+        if update_response is None:
+            return
+
+        state, self._current_app, running_apps = update_response
 
         self._state = ANDROIDTV_STATES.get(state)
         if self._state is None:
