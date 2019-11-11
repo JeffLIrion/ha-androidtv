@@ -113,7 +113,7 @@ class ADBPython(object):
                     return True
 
                 except OSError as exc:
-                    if self._available or always_log_errors:
+                    if self._available or always_log_errors or True:
                         if exc.strerror is None:
                             exc.strerror = "Timed out trying to connect to ADB device."
                         _LOGGER.warning("Couldn't connect to host %s.  %s: %s", self.host, exc.__class__.__name__, exc.strerror)
@@ -124,7 +124,7 @@ class ADBPython(object):
                     return False
 
                 except Exception as exc:  # pylint: disable=broad-except
-                    if self._available or always_log_errors:
+                    if self._available or always_log_errors or True:
                         _LOGGER.warning("Couldn't connect to host %s.  %s: %s", self.host, exc.__class__.__name__, exc)
 
                     # ADB connection attempt failed
