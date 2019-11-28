@@ -14,12 +14,12 @@ wget https://raw.githubusercontent.com/home-assistant/home-assistant/dev/homeass
 
 # 3. Download `androidtv` package
 mkdir -p androidtv
-wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/master/androidtv/__init__.py -O androidtv/__init__.py
-wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/master/androidtv/adb_manager.py -O androidtv/adb_manager.py
-wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/master/androidtv/androidtv.py -O androidtv/androidtv.py
-wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/master/androidtv/basetv.py -O androidtv/basetv.py
-wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/master/androidtv/constants.py -O androidtv/constants.py
-wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/master/androidtv/firetv.py -O androidtv/firetv.py
+wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/androidtv-running-apps/androidtv/__init__.py -O androidtv/__init__.py
+wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/androidtv-running-apps/androidtv/adb_manager.py -O androidtv/adb_manager.py
+wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/androidtv-running-apps/androidtv/androidtv.py -O androidtv/androidtv.py
+wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/androidtv-running-apps/androidtv/basetv.py -O androidtv/basetv.py
+wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/androidtv-running-apps/androidtv/constants.py -O androidtv/constants.py
+wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/androidtv-running-apps/androidtv/firetv.py -O androidtv/firetv.py
 
 # 4. Download `adb-shell` package
 mkdir -p androidtv/adb_shell/auth

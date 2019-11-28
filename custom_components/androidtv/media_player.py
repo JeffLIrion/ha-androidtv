@@ -287,7 +287,7 @@ def adb_decorator(override_available=False):
 class ADBDevice(MediaPlayerDevice):
     """Representation of an Android TV or Fire TV device."""
 
-    def __init__(self, aftv, name, apps, turn_on_command, turn_off_command):
+    def __init__(self, aftv, name, apps, get_sources, turn_on_command, turn_off_command):
         """Initialize the Android TV / Fire TV device."""
         self.aftv = aftv
         self._name = name
@@ -296,6 +296,7 @@ class ADBDevice(MediaPlayerDevice):
         self._app_name_to_id = {
             value: key for key, value in self._app_id_to_name.items()
         }
+        self._get_sources = get_sources
         self._keys = KEYS
 
         self._device_properties = self.aftv.device_properties
@@ -325,6 +326,7 @@ class ADBDevice(MediaPlayerDevice):
         self._adb_response = None
         self._available = True
         self._current_app = None
+        self._sources = None
         self._state = None
 
     @property
@@ -356,6 +358,16 @@ class ADBDevice(MediaPlayerDevice):
     def should_poll(self):
         """Device should be polled."""
         return True
+
+    @property
+    def source(self):
+        """Return the current app."""
+        return self._app_id_to_name.get(self._current_app, self._current_app)
+
+    @property
+    def source_list(self):
+        """Return a list of running apps."""
+        return self._sources
 
     @property
     def state(self):
@@ -436,9 +448,9 @@ class ADBDevice(MediaPlayerDevice):
 class AndroidTVDevice(ADBDevice):
     """Representation of an Android TV device."""
 
-    def __init__(self, aftv, name, apps, turn_on_command, turn_off_command):
+    def __init__(self, aftv, name, apps, get_sources, turn_on_command, turn_off_command):
         """Initialize the Android TV device."""
-        super().__init__(aftv, name, apps, turn_on_command, turn_off_command)
+        super().__init__(aftv, name, apps, get_sources, turn_on_command, turn_off_command)
 
         self._device = None
         self._is_volume_muted = None
@@ -465,14 +477,22 @@ class AndroidTVDevice(ADBDevice):
         (
             state,
             self._current_app,
+            running_apps,
             self._device,
             self._is_volume_muted,
             self._volume_level,
-        ) = self.aftv.update()
+        ) = self.aftv.update(self._get_sources)
 
         self._state = ANDROIDTV_STATES.get(state)
         if self._state is None:
             self._available = False
+
+        if running_apps:
+            self._sources = [
+                self._app_id_to_name.get(app_id, app_id) for app_id in running_apps
+            ]
+        else:
+            self._sources = None
 
     @property
     def is_volume_muted(self):
@@ -522,10 +542,7 @@ class FireTVDevice(ADBDevice):
         self, aftv, name, apps, get_sources, turn_on_command, turn_off_command
     ):
         """Initialize the Fire TV device."""
-        super().__init__(aftv, name, apps, turn_on_command, turn_off_command)
-
-        self._get_sources = get_sources
-        self._sources = None
+        super().__init__(aftv, name, apps, get_sources, turn_on_command, turn_off_command)
 
     @adb_decorator(override_available=True)
     def update(self):
@@ -557,16 +574,6 @@ class FireTVDevice(ADBDevice):
             ]
         else:
             self._sources = None
-
-    @property
-    def source(self):
-        """Return the current app."""
-        return self._app_id_to_name.get(self._current_app, self._current_app)
-
-    @property
-    def source_list(self):
-        """Return a list of running apps."""
-        return self._sources
 
     @property
     def supported_features(self):
