@@ -500,11 +500,6 @@ class AndroidTVDevice(ADBDevice):
         return self._is_volume_muted
 
     @property
-    def source(self):
-        """Return the current playback device."""
-        return self._device
-
-    @property
     def supported_features(self):
         """Flag media player features that are supported."""
         return SUPPORT_ANDROIDTV
