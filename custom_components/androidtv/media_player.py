@@ -200,6 +200,7 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
                 aftv,
                 config[CONF_NAME],
                 config[CONF_APPS],
+                config[CONF_GET_SOURCES],
                 config.get(CONF_TURN_ON_COMMAND),
                 config.get(CONF_TURN_OFF_COMMAND),
             )
