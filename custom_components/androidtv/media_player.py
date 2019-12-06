@@ -55,6 +55,7 @@ SUPPORT_ANDROIDTV = (
     | SUPPORT_TURN_OFF
     | SUPPORT_PREVIOUS_TRACK
     | SUPPORT_NEXT_TRACK
+    | SUPPORT_SELECT_SOURCE
     | SUPPORT_STOP
     | SUPPORT_VOLUME_MUTE
     | SUPPORT_VOLUME_STEP
@@ -421,6 +422,20 @@ class ADBDevice(MediaPlayerDevice):
         self.aftv.media_next_track()
 
     @adb_decorator()
+    def select_source(self, source):
+        """Select input source.
+
+        If the source starts with a '!', then it will close the app instead of
+        opening it.
+        """
+        if isinstance(source, str):
+            if not source.startswith("!"):
+                self.aftv.launch_app(self._app_name_to_id.get(source, source))
+            else:
+                source_ = source[1:].lstrip()
+                self.aftv.stop_app(self._app_name_to_id.get(source_, source_))
+
+    @adb_decorator()
     def adb_command(self, cmd):
         """Send an ADB command to an Android TV / Fire TV device."""
         key = self._keys.get(cmd)
@@ -579,17 +594,3 @@ class FireTVDevice(ADBDevice):
     def media_stop(self):
         """Send stop (back) command."""
         self.aftv.back()
-
-    @adb_decorator()
-    def select_source(self, source):
-        """Select input source.
-
-        If the source starts with a '!', then it will close the app instead of
-        opening it.
-        """
-        if isinstance(source, str):
-            if not source.startswith("!"):
-                self.aftv.launch_app(self._app_name_to_id.get(source, source))
-            else:
-                source_ = source[1:].lstrip()
-                self.aftv.stop_app(self._app_name_to_id.get(source_, source_))
