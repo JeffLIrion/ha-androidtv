@@ -14,12 +14,14 @@ wget https://raw.githubusercontent.com/home-assistant/home-assistant/dev/homeass
 
 # 3. Download `androidtv` package
 mkdir -p androidtv
-wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/master/androidtv/__init__.py -O androidtv/__init__.py
-wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/master/androidtv/adb_manager.py -O androidtv/adb_manager.py
-wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/master/androidtv/androidtv.py -O androidtv/androidtv.py
-wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/master/androidtv/basetv.py -O androidtv/basetv.py
-wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/master/androidtv/constants.py -O androidtv/constants.py
-wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/master/androidtv/firetv.py -O androidtv/firetv.py
+ANDROIDTV_BRANCH="LockNotAcquiredException"
+wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/$ANDROIDTV_BRANCH/androidtv/__init__.py -O androidtv/__init__.py
+wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/$ANDROIDTV_BRANCH/androidtv/adb_manager.py -O androidtv/adb_manager.py
+wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/$ANDROIDTV_BRANCH/androidtv/androidtv.py -O androidtv/androidtv.py
+wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/$ANDROIDTV_BRANCH/androidtv/basetv.py -O androidtv/basetv.py
+wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/$ANDROIDTV_BRANCH/androidtv/constants.py -O androidtv/constants.py
+wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/$ANDROIDTV_BRANCH/androidtv/exceptions.py -O androidtv/exceptions.py
+wget https://raw.githubusercontent.com/JeffLIrion/python-androidtv/$ANDROIDTV_BRANCH/androidtv/firetv.py -O androidtv/firetv.py
 
 # 4. Download `adb-shell` package
 mkdir -p androidtv/adb_shell/auth
