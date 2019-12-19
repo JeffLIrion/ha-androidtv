@@ -2,7 +2,6 @@
 import functools
 import logging
 import os
-import voluptuous as vol
 
 from .androidtv.adb_shell.auth.keygen import keygen
 from .androidtv.adb_shell.exceptions import (
@@ -11,10 +10,11 @@ from .androidtv.adb_shell.exceptions import (
     InvalidResponseError,
     TcpTimeoutException,
 )
-from .androidtv import setup, ha_state_detection_rules_validator
+from .androidtv import ha_state_detection_rules_validator, setup
 from .androidtv.constants import APPS, KEYS
+import voluptuous as vol
 
-from homeassistant.components.media_player import MediaPlayerDevice, PLATFORM_SCHEMA
+from homeassistant.components.media_player import PLATFORM_SCHEMA, MediaPlayerDevice
 from homeassistant.components.media_player.const import (
     SUPPORT_NEXT_TRACK,
     SUPPORT_PAUSE,
@@ -146,7 +146,8 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
             adb_log = f"using Python ADB implementation with adbkey='{adbkey}'"
 
             aftv = setup(
-                host,
+                config[CONF_HOST],
+                config[CONF_PORT],
                 adbkey,
                 device_class=config[CONF_DEVICE_CLASS],
                 state_detection_rules=config[CONF_STATE_DETECTION_RULES],
@@ -159,7 +160,8 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
             )
 
             aftv = setup(
-                host,
+                config[CONF_HOST],
+                config[CONF_PORT],
                 config[CONF_ADBKEY],
                 device_class=config[CONF_DEVICE_CLASS],
                 state_detection_rules=config[CONF_STATE_DETECTION_RULES],
@@ -171,7 +173,8 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
         adb_log = f"using ADB server at {config[CONF_ADB_SERVER_IP]}:{config[CONF_ADB_SERVER_PORT]}"
 
         aftv = setup(
-            host,
+            config[CONF_HOST],
+            config[CONF_PORT],
             adb_server_ip=config[CONF_ADB_SERVER_IP],
             adb_server_port=config[CONF_ADB_SERVER_PORT],
             device_class=config[CONF_DEVICE_CLASS],
@@ -289,7 +292,9 @@ def adb_decorator(override_available=False):
 class ADBDevice(MediaPlayerDevice):
     """Representation of an Android TV or Fire TV device."""
 
-    def __init__(self, aftv, name, apps, get_sources, turn_on_command, turn_off_command):
+    def __init__(
+        self, aftv, name, apps, get_sources, turn_on_command, turn_off_command
+    ):
         """Initialize the Android TV / Fire TV device."""
         self.aftv = aftv
         self._name = name
@@ -464,11 +469,14 @@ class ADBDevice(MediaPlayerDevice):
 class AndroidTVDevice(ADBDevice):
     """Representation of an Android TV device."""
 
-    def __init__(self, aftv, name, apps, get_sources, turn_on_command, turn_off_command):
+    def __init__(
+        self, aftv, name, apps, get_sources, turn_on_command, turn_off_command
+    ):
         """Initialize the Android TV device."""
-        super().__init__(aftv, name, apps, get_sources, turn_on_command, turn_off_command)
+        super().__init__(
+            aftv, name, apps, get_sources, turn_on_command, turn_off_command
+        )
 
-        self._device = None
         self._is_volume_muted = None
         self._volume_level = None
 
@@ -494,7 +502,7 @@ class AndroidTVDevice(ADBDevice):
             state,
             self._current_app,
             running_apps,
-            self._device,
+            _,
             self._is_volume_muted,
             self._volume_level,
         ) = self.aftv.update(self._get_sources)
@@ -548,12 +556,6 @@ class AndroidTVDevice(ADBDevice):
 
 class FireTVDevice(ADBDevice):
     """Representation of a Fire TV device."""
-
-    def __init__(
-        self, aftv, name, apps, get_sources, turn_on_command, turn_off_command
-    ):
-        """Initialize the Fire TV device."""
-        super().__init__(aftv, name, apps, get_sources, turn_on_command, turn_off_command)
 
     @adb_decorator(override_available=True)
     def update(self):
