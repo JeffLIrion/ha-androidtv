@@ -3,16 +3,16 @@ import functools
 import logging
 import os
 
-from .androidtv.adb_shell.auth.keygen import keygen
-from .androidtv.adb_shell.exceptions import (
+from adb_shell.auth.keygen import keygen
+from adb_shell.exceptions import (
     InvalidChecksumError,
     InvalidCommandError,
     InvalidResponseError,
     TcpTimeoutException,
 )
-from .androidtv import ha_state_detection_rules_validator, setup
-from .androidtv.constants import APPS, KEYS
-from .androidtv.exceptions import LockNotAcquiredException
+from androidtv import ha_state_detection_rules_validator, setup
+from androidtv.constants import APPS, KEYS
+from androidtv.exceptions import LockNotAcquiredException
 import voluptuous as vol
 
 from homeassistant.components.media_player import PLATFORM_SCHEMA, MediaPlayerDevice
@@ -132,7 +132,9 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_ADB_SERVER_IP): cv.string,
         vol.Optional(CONF_ADB_SERVER_PORT, default=DEFAULT_ADB_SERVER_PORT): cv.port,
         vol.Optional(CONF_GET_SOURCES, default=DEFAULT_GET_SOURCES): cv.boolean,
-        vol.Optional(CONF_APPS, default=dict()): vol.Schema({cv.string: cv.string}),
+        vol.Optional(CONF_APPS, default=dict()): vol.Schema(
+            {cv.string: vol.Any(cv.string, None)}
+        ),
         vol.Optional(CONF_TURN_ON_COMMAND): cv.string,
         vol.Optional(CONF_TURN_OFF_COMMAND): cv.string,
         vol.Optional(CONF_STATE_DETECTION_RULES, default={}): vol.Schema(
@@ -373,7 +375,7 @@ class ADBDevice(MediaPlayerDevice):
         self._app_id_to_name = APPS.copy()
         self._app_id_to_name.update(apps)
         self._app_name_to_id = {
-            value: key for key, value in self._app_id_to_name.items()
+            value: key for key, value in self._app_id_to_name.items() if value
         }
         self._get_sources = get_sources
         self._keys = KEYS
@@ -600,9 +602,10 @@ class AndroidTVDevice(ADBDevice):
             self._available = False
 
         if running_apps:
-            self._sources = [
+            sources = [
                 self._app_id_to_name.get(app_id, app_id) for app_id in running_apps
             ]
+            self._sources = [source for source in sources if source]
         else:
             self._sources = None
 
@@ -670,9 +673,10 @@ class FireTVDevice(ADBDevice):
             self._available = False
 
         if running_apps:
-            self._sources = [
+            sources = [
                 self._app_id_to_name.get(app_id, app_id) for app_id in running_apps
             ]
+            self._sources = [source for source in sources if source]
         else:
             self._sources = None
 
