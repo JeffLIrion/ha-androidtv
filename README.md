@@ -3,11 +3,6 @@
 **HACS URL:** [JeffLIrion/ha-androidtv](https://github.com/JeffLIrion/ha-androidtv)
 
 
-# Android TV
+# EXPERIMENTAL / FOR TESTING PURPOSES!!!
 
-This is a modified version of the built-in [`androidtv`](https://www.home-assistant.io/components/androidtv/) component for the purpose of testing.  
-
-
-## Configuration
-
-This is the same as the configuration for the built-in [Android TV](https://www.home-assistant.io/components/androidtv/) component.
+This is a modified version of the built-in [`androidtv`](https://www.home-assistant.io/components/androidtv/) component for the purpose of testing.  Unless you are testing a new feature, you should use the built-in component, not this custom component.
