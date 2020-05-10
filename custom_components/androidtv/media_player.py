@@ -16,7 +16,7 @@ from aio_androidtv.constants import APPS, KEYS
 from aio_androidtv.exceptions import LockNotAcquiredException
 import voluptuous as vol
 
-from homeassistant.components.media_player import PLATFORM_SCHEMA, MediaPlayerEntity
+from homeassistant.components.media_player import PLATFORM_SCHEMA, MediaPlayerDevice
 from homeassistant.components.media_player.const import (
     SUPPORT_NEXT_TRACK,
     SUPPORT_PAUSE,
@@ -350,7 +350,7 @@ def adb_decorator(override_available=False):
     return _adb_decorator
 
 
-class ADBDevice(MediaPlayerEntity):
+class ADBDevice(MediaPlayerDevice):
     """Representation of an Android TV or Fire TV device."""
 
     def __init__(
@@ -532,27 +532,28 @@ class ADBDevice(MediaPlayerEntity):
         if key:
             await self.aftv.adb_shell(f"input keyevent {key}")
             self._adb_response = None
-            self.async_schedule_update_ha_state(True)
+            # self.async_schedule_update_ha_state(True)
             return
 
         if cmd == "GET_PROPERTIES":
             self._adb_response = str(await self.aftv.get_properties_dict())
-            self.async_schedule_update_ha_state(True)
+            self.async_write_ha_state()
             return self._adb_response
 
         try:
             response = await self.aftv.adb_shell(cmd)
         except UnicodeDecodeError:
             self._adb_response = None
-            self.async_schedule_update_ha_state(True)
+            # self.async_schedule_update_ha_state(True)
             return
 
         if isinstance(response, str) and response.strip():
             self._adb_response = response.strip()
+            self.async_write_ha_state()
         else:
             self._adb_response = None
 
-        self.async_schedule_update_ha_state(True)
+        # self.async_schedule_update_ha_state(True)
         return self._adb_response
 
     @adb_decorator()
