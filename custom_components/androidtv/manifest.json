@@ -4,7 +4,7 @@
   "documentation": "https://www.home-assistant.io/integrations/androidtv",
   "requirements": [
     "aio-adb-shell==0.0.1",
-    "aio-androidtv==0.0.1"
+    "aio-androidtv==0.0.4"
   ],
   "codeowners": ["@JeffLIrion"]
 }
