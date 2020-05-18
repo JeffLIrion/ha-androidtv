@@ -425,6 +425,11 @@ class ADBDevice(MediaPlayerDevice):
         return {"adb_response": self._adb_response}
 
     @property
+    def media_image_hash(self):
+        """Hash value for media image."""
+        return f"{datetime.now().timestamp()}" if self._screencap else None
+
+    @property
     def name(self):
         """Return the device name."""
         return self._name
@@ -453,11 +458,6 @@ class ADBDevice(MediaPlayerDevice):
     def unique_id(self):
         """Return the device unique id."""
         return self._unique_id
-
-    @property
-    def media_image_hash(self):
-        """Hash value for media image."""
-        return f"{datetime.now().timestamp()}"
 
     @adb_decorator()
     async def async_get_media_image(self):
@@ -537,6 +537,11 @@ class ADBDevice(MediaPlayerDevice):
 
         if cmd == "GET_PROPERTIES":
             self._adb_response = str(await self.aftv.get_properties_dict())
+            self.async_write_ha_state()
+            return self._adb_response
+
+        if cmd == "LEARN_SENDEVENT":
+            self._adb_response = await self.aftv.learn_sendevent()
             self.async_write_ha_state()
             return self._adb_response
 
