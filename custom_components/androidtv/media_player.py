@@ -4,19 +4,19 @@ import functools
 import logging
 import os
 
-from adb_shell_dev.auth.keygen import keygen
-from adb_shell_dev.auth.sign_pythonrsa import PythonRSASigner
-from adb_shell_dev.exceptions import (
+from adb_shell.auth.keygen import keygen
+from adb_shell.exceptions import (
     AdbTimeoutError,
     InvalidChecksumError,
     InvalidCommandError,
     InvalidResponseError,
     TcpTimeoutException,
 )
-from androidtv_dev import ha_state_detection_rules_validator
-from androidtv_dev.constants import APPS, KEYS
-from androidtv_dev.exceptions import LockNotAcquiredException
-from androidtv_dev.setup_async import setup
+from androidtv import ha_state_detection_rules_validator
+from androidtv.adb_manager.adb_manager_sync import ADBPythonSync
+from androidtv.constants import APPS, KEYS
+from androidtv.exceptions import LockNotAcquiredException
+from androidtv.setup_async import setup
 import voluptuous as vol
 
 from homeassistant.components.media_player import PLATFORM_SCHEMA, MediaPlayerEntity
@@ -176,9 +176,7 @@ def setup_androidtv(hass, config):
             keygen(adbkey)
 
         # Load the ADB key
-        with open(adbkey) as priv_key:
-            priv = priv_key.read()
-        signer = PythonRSASigner("", priv)
+        signer = ADBPythonSync.load_adbkey(adbkey)
         adb_log = f"using Python ADB implementation with adbkey='{adbkey}'"
 
     else:

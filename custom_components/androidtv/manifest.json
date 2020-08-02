@@ -3,8 +3,8 @@
   "name": "Android TV",
   "documentation": "https://www.home-assistant.io/integrations/androidtv",
   "requirements": [
-    "https://github.com/JeffLIrion/adb_shell/zipball/dev#adb_shell_dev[async]==0.2.1",
-    "https://github.com/JeffLIrion/python-androidtv/zipball/dev#androidtv_dev[async]==0.0.47",
+    "adb-shell[async]==0.2.1",
+    "androidtv[async]==0.0.47",
     "pure-python-adb==0.2.2.dev0"
   ],
   "codeowners": ["@JeffLIrion"]
